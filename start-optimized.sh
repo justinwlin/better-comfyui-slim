@@ -85,6 +85,9 @@ setup_workspace() {
     mkdir -p "$MODELS_DIR" "$OUTPUT_DIR" "$INPUT_DIR"
     mkdir -p "$WORKSPACE_DIR/temp" "$WORKSPACE_DIR/cache"
     
+    # Create ComfyUI model subdirectories if they don't exist
+    mkdir -p "$MODELS_DIR"/{checkpoints,loras,vae,controlnet,clip,unet,embeddings,hypernetworks,upscale_models}
+    
     # Create symlinks from ComfyUI to workspace for persistent storage
     # This way ComfyUI uses /workspace for all user data
     for dir in models output input; do
