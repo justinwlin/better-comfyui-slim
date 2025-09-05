@@ -11,12 +11,17 @@ Optimized ComfyUI Docker image for RunPod with split-layer architecture for fast
 If you just want to use the images without building:
 
 ```bash
-# Pull and run locally
+# Pull and run ComfyUI (full descriptive name)
+docker pull justinrunpod/ubuntu-cuda-comfyui:latest
+docker run -p 8188:8188 justinrunpod/ubuntu-cuda-comfyui:latest
+
+# Or use simple alias
 docker pull justinrunpod/comfyui:latest
 docker run -p 8188:8188 justinrunpod/comfyui:latest
 
-# Or use on RunPod - set as Docker image:
-justinrunpod/comfyui:latest
+# On RunPod - use either:
+justinrunpod/ubuntu-cuda-comfyui:latest  # Clear what's included
+justinrunpod/comfyui:latest              # Simple version
 ```
 
 ## 🏗️ Build Instructions
@@ -51,9 +56,16 @@ docker buildx bake -f docker-bake.hcl --push
 
 ### 📦 Where Images Are Pushed
 
-By default, images are pushed to Docker Hub:
-- **Base Image**: `justinrunpod/ubuntu-cuda12.4-python3.12-uv:latest`
-- **App Image**: `justinrunpod/comfyui:latest`
+By default, images are pushed to Docker Hub with descriptive names:
+
+**Base Image** (General purpose Ubuntu + CUDA + Python):
+- `justinrunpod/ubuntu-cuda-python:latest`
+- `justinrunpod/ubuntu-cuda-python:ubuntu22.04-cuda12.4-python3.12`
+
+**ComfyUI Image** (Full application):
+- `justinrunpod/ubuntu-cuda-comfyui:latest`
+- `justinrunpod/ubuntu-cuda-comfyui:ubuntu22.04-cuda12.4-python3.12-pytorch2.5.1`
+- `justinrunpod/comfyui:latest` (simple alias)
 
 To use your own registry:
 
@@ -71,9 +83,9 @@ export REGISTRY=your-registry.com/namespace
 depot bake -f docker-bake.hcl --push
 ```
 
-The built images will be:
-- `${REGISTRY}/ubuntu-cuda12.4-python3.12-uv:latest` - Base layer with Ubuntu 22.04, CUDA 12.4, Python 3.12, UV package manager
-- `${REGISTRY}/comfyui:latest` - Full ComfyUI application
+The image naming convention:
+- **Base**: `ubuntu-cuda-python:ubuntu{VERSION}-cuda{VERSION}-python{VERSION}`
+- **App**: `ubuntu-cuda-comfyui:ubuntu{VERSION}-cuda{VERSION}-python{VERSION}-pytorch{VERSION}`
 
 ## 📦 Architecture
 

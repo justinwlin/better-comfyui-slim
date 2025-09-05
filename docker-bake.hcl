@@ -6,8 +6,28 @@ variable "REGISTRY" {
   default = "justinrunpod"
 }
 
+variable "UBUNTU_VERSION" {
+  default = "22.04"
+}
+
+variable "CUDA_VERSION" {
+  default = "12.4"
+}
+
+variable "PYTHON_VERSION" {
+  default = "3.12"
+}
+
+variable "PYTORCH_VERSION" {
+  default = "2.5.1"
+}
+
 variable "BASE_TAG" {
-  default = "cuda12.4-ubuntu22.04-python3.12"
+  default = "ubuntu22.04-cuda12.4-python3.12"
+}
+
+variable "APP_TAG" {
+  default = "ubuntu22.04-cuda12.4-python3.12-pytorch2.5.1"
 }
 
 group "default" {
@@ -29,12 +49,13 @@ target "base" {
   context = "."
   dockerfile = "Dockerfile.base"
   tags = [
-    "${REGISTRY}/ubuntu-cuda12.4-python3.12-uv:${BASE_TAG}",
-    "${REGISTRY}/ubuntu-cuda12.4-python3.12-uv:latest"
+    "${REGISTRY}/ubuntu-cuda-python:${BASE_TAG}",
+    "${REGISTRY}/ubuntu-cuda-python:latest",
+    "${REGISTRY}/ubuntu-cuda-python:ubuntu${UBUNTU_VERSION}-cuda${CUDA_VERSION}-python${PYTHON_VERSION}"
   ]
   platforms = ["linux/amd64"]
-  cache-from = ["type=registry,ref=${REGISTRY}/ubuntu-cuda12.4-python3.12-uv:buildcache"]
-  cache-to = ["type=registry,ref=${REGISTRY}/ubuntu-cuda12.4-python3.12-uv:buildcache,mode=max"]
+  cache-from = ["type=registry,ref=${REGISTRY}/ubuntu-cuda-python:buildcache"]
+  cache-to = ["type=registry,ref=${REGISTRY}/ubuntu-cuda-python:buildcache,mode=max"]
   output = ["type=registry"]
 }
 
@@ -43,12 +64,15 @@ target "comfyui" {
   context = "."
   dockerfile = "Dockerfile.app"
   tags = [
-    "${REGISTRY}/comfyui:latest",
-    "${REGISTRY}/comfyui:${BASE_TAG}"
+    "${REGISTRY}/ubuntu-cuda-comfyui:${APP_TAG}",
+    "${REGISTRY}/ubuntu-cuda-comfyui:latest",
+    "${REGISTRY}/ubuntu-cuda-comfyui:comfyui-pytorch${PYTORCH_VERSION}",
+    # Keep simple alias for backward compatibility
+    "${REGISTRY}/comfyui:latest"
   ]
   platforms = ["linux/amd64"]
-  cache-from = ["type=registry,ref=${REGISTRY}/comfyui:buildcache"]
-  cache-to = ["type=registry,ref=${REGISTRY}/comfyui:buildcache,mode=max"]
+  cache-from = ["type=registry,ref=${REGISTRY}/ubuntu-cuda-comfyui:buildcache"]
+  cache-to = ["type=registry,ref=${REGISTRY}/ubuntu-cuda-comfyui:buildcache,mode=max"]
   output = ["type=registry"]
   # Use the base target directly as build context
   contexts = {
