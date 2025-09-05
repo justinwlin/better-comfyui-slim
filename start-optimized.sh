@@ -1,9 +1,10 @@
 #!/bin/bash
 set -e
 
-# Configuration - everything runs from baked-in locations
-COMFYUI_PATH="/opt/comfyui-base/ComfyUI"
-WORKSPACE_DIR="/workspace/madapps"
+# Configuration
+COMFYUI_BASE="/opt/comfyui-base/ComfyUI"  # Pre-installed ComfyUI (safe from volume mount)
+WORKSPACE_DIR="/workspace/madapps"  # RunPod persistent volume
+COMFYUI_PATH="$WORKSPACE_DIR/ComfyUI"  # Where ComfyUI will run from
 ARGS_FILE="$WORKSPACE_DIR/comfyui_args.txt"
 MODELS_DIR="$WORKSPACE_DIR/models"
 OUTPUT_DIR="$WORKSPACE_DIR/output"
@@ -14,8 +15,7 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 export CUDA_MODULE_LOADING=LAZY
 export TOKENIZERS_PARALLELISM=false
 
-# Activate the venv that contains all dependencies
-source "$COMFYUI_PATH/.venv/bin/activate"
+# Don't activate venv here - we'll do it after checking if ComfyUI exists
 
 # ---------------------------------------------------------------------------- #
 #                          Function Definitions                                  #
@@ -77,18 +77,23 @@ start_services() {
 setup_workspace() {
     echo "Setting up workspace..."
     
+    # Check if this is first run (ComfyUI not in workspace)
+    if [ ! -d "$COMFYUI_PATH" ]; then
+        echo "First run detected. Copying ComfyUI to workspace..."
+        cp -r "$COMFYUI_BASE" "$COMFYUI_PATH"
+        echo "ComfyUI copied to persistent storage."
+    else
+        echo "ComfyUI already exists in workspace."
+    fi
+    
     # Create directories for user data
     mkdir -p "$MODELS_DIR" "$OUTPUT_DIR" "$INPUT_DIR"
     mkdir -p "$WORKSPACE_DIR/temp" "$WORKSPACE_DIR/cache"
     
-    # Create symlinks from ComfyUI to workspace for models/output/input
-    # This allows ComfyUI to use workspace storage for user data
-    # while keeping the code in the image
-    
-    # Remove existing directories if they exist and create symlinks
+    # Ensure model/output/input directories are properly linked
     for dir in models output input; do
+        # If it's a directory inside ComfyUI, move it out to workspace root
         if [ -d "$COMFYUI_PATH/$dir" ] && [ ! -L "$COMFYUI_PATH/$dir" ]; then
-            # Move any existing files to workspace
             if [ "$(ls -A $COMFYUI_PATH/$dir 2>/dev/null)" ]; then
                 echo "Moving existing $dir to workspace..."
                 cp -r "$COMFYUI_PATH/$dir"/* "$WORKSPACE_DIR/$dir/" 2>/dev/null || true
@@ -96,7 +101,7 @@ setup_workspace() {
             rm -rf "$COMFYUI_PATH/$dir"
         fi
         
-        # Create symlink if it doesn't exist
+        # Create symlink from ComfyUI to workspace-level directory
         if [ ! -e "$COMFYUI_PATH/$dir" ]; then
             ln -s "$WORKSPACE_DIR/$dir" "$COMFYUI_PATH/$dir"
         fi
@@ -105,11 +110,6 @@ setup_workspace() {
     # Create temp directory symlink for faster I/O on temporary files
     if [ ! -L "$COMFYUI_PATH/temp" ]; then
         ln -s /tmp "$COMFYUI_PATH/temp" 2>/dev/null || true
-    fi
-    
-    # Ensure ComfyUI workspace link exists (for compatibility)
-    if [ ! -L "$WORKSPACE_DIR/ComfyUI" ]; then
-        ln -s "$COMFYUI_PATH" "$WORKSPACE_DIR/ComfyUI" 2>/dev/null || true
     fi
     
     # Download popular model if none exist (optional - comment out if not needed)
@@ -164,8 +164,36 @@ if [ ! -f "$ARGS_FILE" ]; then
 EOF
 fi
 
+# Check if ComfyUI directory exists
+if [ ! -d "$COMFYUI_PATH" ]; then
+    echo "ERROR: ComfyUI directory not found at $COMFYUI_PATH"
+    echo "This should have been created by setup_workspace()"
+    exit 1
+fi
+
 # Change to ComfyUI directory
 cd "$COMFYUI_PATH"
+echo "Changed to ComfyUI directory: $(pwd)"
+
+# Check if main.py exists
+if [ ! -f "main.py" ]; then
+    echo "ERROR: main.py not found in ComfyUI directory"
+    echo "Directory contents:"
+    ls -la
+    exit 1
+fi
+
+# Activate the venv now that we know ComfyUI exists
+if [ -f "$COMFYUI_PATH/.venv/bin/activate" ]; then
+    echo "Activating ComfyUI virtual environment..."
+    source "$COMFYUI_PATH/.venv/bin/activate"
+    echo "Python path: $(which python)"
+    echo "Python version: $(python --version)"
+else
+    echo "Warning: Virtual environment not found, using system Python"
+    echo "Python path: $(which python3)"
+    echo "Python version: $(python3 --version)"
+fi
 
 # Parse arguments
 FIXED_ARGS="--listen 0.0.0.0 --port 8188"
@@ -193,5 +221,29 @@ echo "Output directory: $OUTPUT_DIR"
 echo "GPU: $GPU_NAME"
 echo "----------------------------------------"
 
+# Check current directory
+echo "Current directory: $(pwd)"
+echo "Contents of current directory:"
+ls -la | head -10
+
 # Run ComfyUI directly (no nohup, no background, direct output)
-exec python main.py $FINAL_ARGS
+echo "Launching ComfyUI..."
+echo "Command: python main.py $FINAL_ARGS"
+
+# Check if we're in the right directory
+if [ ! -f "main.py" ]; then
+    echo "ERROR: main.py not found in $(pwd)"
+    echo "Trying to find ComfyUI..."
+    find /workspace -name "main.py" -type f 2>/dev/null | head -5
+    find /opt -name "main.py" -type f 2>/dev/null | head -5
+    exit 1
+fi
+
+# Use the right Python command
+if [ -f "$COMFYUI_PATH/.venv/bin/python" ]; then
+    echo "Using venv Python from $COMFYUI_PATH/.venv/bin/python"
+    exec python main.py $FINAL_ARGS
+else
+    echo "Using system Python3"
+    exec python3 main.py $FINAL_ARGS
+fi

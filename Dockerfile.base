@@ -1,0 +1,80 @@
+# syntax=docker/dockerfile:1.4
+# Base image with Ubuntu, CUDA, Python, and tools
+# This rarely changes and can be cached
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Use mirror for reliability
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.edge.kernel.org|g' /etc/apt/sources.list && \
+    apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+    software-properties-common \
+    gpg-agent \
+    && add-apt-repository ppa:deadsnakes/ppa && \
+    add-apt-repository ppa:cybermax-dexter/ffmpeg-nvenc && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    # Python
+    python3.12 \
+    python3.12-venv \
+    python3.12-dev \
+    # Essential tools
+    git \
+    wget \
+    curl \
+    ca-certificates \
+    build-essential \
+    # Runtime tools
+    openssh-server \
+    ffmpeg \
+    rsync \
+    nano \
+    htop \
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
+    update-alternatives --set python3 /usr/bin/python3.12
+
+# Install pip first, then UV for deterministic package management
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && \
+    pip install --no-cache-dir -U pip && \
+    pip install --no-cache-dir uv && \
+    # Use UV for all other packages (deterministic)
+    uv pip install --system --no-cache jupyter jupyterlab notebook ipywidgets && \
+    pip cache purge
+
+# Install CUDA 12.4
+RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
+    dpkg -i cuda-keyring_1.1-1_all.deb && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends cuda-minimal-build-12-4 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm cuda-keyring_1.1-1_all.deb
+
+# Install FileBrowser
+RUN curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
+
+# Install Zasper
+RUN wget https://github.com/zasper-io/zasper/releases/download/v0.1.0-alpha/zasper-webapp-linux-amd64.tar.gz && \
+    tar xf zasper-webapp-linux-amd64.tar.gz -C /usr/local/bin && \
+    rm zasper-webapp-linux-amd64.tar.gz && \
+    chmod +x /usr/local/bin/zasper
+
+# Configure SSH
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
+    sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
+    mkdir -p /run/sshd
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
+ENV PATH=/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}
+
+# Create workspace structure
+RUN mkdir -p /workspace/madapps
+
+WORKDIR /workspace/madapps

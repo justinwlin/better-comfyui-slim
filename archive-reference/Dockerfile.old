@@ -1,44 +1,18 @@
 # syntax=docker/dockerfile:1.4
-# Multi-stage build for smaller final image
-FROM ubuntu:22.04 AS base-system
+# ComfyUI application image
+# Builds on top of the base image with CUDA and tools
 
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Minimal system packages only
-RUN apt-get update && \
-    apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends \
-    software-properties-common \
-    gpg-agent \
-    && add-apt-repository ppa:deadsnakes/ppa && \
-    add-apt-repository ppa:cybermax-dexter/ffmpeg-nvenc && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-    python3.12 \
-    python3.12-venv \
-    python3.12-dev \
-    git \
-    wget \
-    curl \
-    ca-certificates \
-    && apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
-    update-alternatives --set python3 /usr/bin/python3.12
-
-# Install pip
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
+# Use pre-built base image or build from context
+# When using docker-bake.hcl, this will use the base target
+# When building standalone, you can specify: --build-context base=justinrunpod/comfyui-base:latest
+ARG BASE_IMAGE=justinrunpod/comfyui-base:latest
+FROM ${BASE_IMAGE} AS base-system
 
 # ============================================
 # Build stage for ComfyUI
 FROM base-system AS comfyui-builder
 
-# Install build dependencies (will be discarded)
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    build-essential \
-    && apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+# Build dependencies already in base image
 
 # Clone and setup ComfyUI
 RUN mkdir -p /opt/comfyui-base && \
@@ -99,8 +73,8 @@ RUN wget https://github.com/zasper-io/zasper/releases/download/v0.1.0-alpha/zasp
     tar xf zasper-webapp-linux-amd64.tar.gz
 
 # ============================================
-# Final minimal image
-FROM ubuntu:22.04
+# Final minimal image - use base image instead of Ubuntu
+FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
@@ -111,7 +85,8 @@ ENV PATH=/usr/local/cuda/bin:${PATH}
 ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}
 
 # Install only runtime dependencies (no build tools)
-RUN apt-get update && \
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.edge.kernel.org|g' /etc/apt/sources.list && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
     software-properties-common \
     gpg-agent \
@@ -153,25 +128,27 @@ RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/
 # Install FileBrowser (small binary)
 RUN curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
 
-# Copy Zasper from builder
-COPY --from=zasper-builder /go/zasper /usr/local/bin/
+# Copy Zasper from builder (independent binary, can download in parallel)
+COPY --link --from=zasper-builder /go/zasper /usr/local/bin/zasper
 
 # Configure SSH
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     mkdir -p /run/sshd
 
-# Copy pre-built ComfyUI from builder stage
+# Copy pre-built ComfyUI to a safe location that won't be overshadowed
+# Copy the entire directory to preserve structure
 COPY --from=custom-nodes-builder /opt/comfyui-base /opt/comfyui-base
 
-# Create workspace
+# Create workspace directory (will be overshadowed by RunPod mount)
 RUN mkdir -p /workspace/madapps
+
 WORKDIR /workspace/madapps
 
 EXPOSE 8188 22 8048 8080 8888
 
-# Copy start script
-COPY start-optimized.sh /start.sh
+# Copy start script (independent file, can download in parallel)
+COPY --link start-optimized.sh /start.sh
 RUN chmod +x /start.sh
 
 ENTRYPOINT ["/start.sh"]
