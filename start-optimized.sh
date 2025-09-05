@@ -59,7 +59,8 @@ start_services() {
     
     # Start Jupyter on port 8888
     echo "Starting Jupyter on port 8888..."
-    nohup jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password='' &> /jupyter.log &
+    cd / && \
+    nohup jupyter lab --allow-root --no-browser --port=8888 --ip=* --NotebookApp.token='' --NotebookApp.password='' --FileContentsManager.delete_to_trash=False --ServerApp.terminado_settings='{"shell_command":["/bin/bash"]}' --ServerApp.allow_origin=* --ServerApp.preferred_dir="$WORKSPACE_DIR" &> /jupyter.log &
     
     # Start FileBrowser (simple approach without database)
     echo "Starting FileBrowser on port 8080..."
