@@ -126,14 +126,21 @@ The image naming convention:
 
 ## 📁 Directory Structure
 
+**ComfyUI Installation** (read-only, in image):
 ```
-/workspace/madapps/
-├── ComfyUI/           # Main application (copied on first run)
-├── models/            # Your model files (persistent)
-├── output/            # Generated images (persistent)
-├── input/             # Input images (persistent)
+/opt/comfyui-base/ComfyUI/   # Pre-installed ComfyUI with all dependencies
+```
+
+**Persistent Storage** (your data):
+```
+/workspace/
+├── models/            # Your model files
+├── output/            # Generated images
+├── input/             # Input images
 └── comfyui_args.txt   # Custom startup arguments
 ```
+
+ComfyUI automatically uses `/workspace` for all user data through symlinks.
 
 ## ⚙️ Configuration
 

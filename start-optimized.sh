@@ -2,9 +2,8 @@
 set -e
 
 # Configuration
-COMFYUI_BASE="/opt/comfyui-base/ComfyUI"  # Pre-installed ComfyUI (safe from volume mount)
-WORKSPACE_DIR="/workspace/madapps"  # RunPod persistent volume
-COMFYUI_PATH="$WORKSPACE_DIR/ComfyUI"  # Where ComfyUI will run from
+COMFYUI_PATH="/opt/comfyui-base/ComfyUI"  # ComfyUI runs from here (never changes)
+WORKSPACE_DIR="/workspace"  # RunPod persistent volume
 ARGS_FILE="$WORKSPACE_DIR/comfyui_args.txt"
 MODELS_DIR="$WORKSPACE_DIR/models"
 OUTPUT_DIR="$WORKSPACE_DIR/output"
@@ -75,42 +74,34 @@ start_services() {
 
 # Setup workspace directories for models/outputs
 setup_workspace() {
-    echo "Setting up workspace..."
+    echo "Setting up workspace directories..."
     
-    # Check if this is first run (ComfyUI not in workspace)
-    if [ ! -d "$COMFYUI_PATH" ]; then
-        echo "First run detected. Copying ComfyUI to workspace..."
-        cp -r "$COMFYUI_BASE" "$COMFYUI_PATH"
-        echo "ComfyUI copied to persistent storage."
-    else
-        echo "ComfyUI already exists in workspace."
-    fi
-    
-    # Create directories for user data
+    # Create workspace directories for persistent data
     mkdir -p "$MODELS_DIR" "$OUTPUT_DIR" "$INPUT_DIR"
     mkdir -p "$WORKSPACE_DIR/temp" "$WORKSPACE_DIR/cache"
     
-    # Ensure model/output/input directories are properly linked
+    # Create symlinks from ComfyUI to workspace for persistent storage
+    # This way ComfyUI uses /workspace for all user data
     for dir in models output input; do
-        # If it's a directory inside ComfyUI, move it out to workspace root
+        # Remove existing directory if it's not a symlink
         if [ -d "$COMFYUI_PATH/$dir" ] && [ ! -L "$COMFYUI_PATH/$dir" ]; then
-            if [ "$(ls -A $COMFYUI_PATH/$dir 2>/dev/null)" ]; then
-                echo "Moving existing $dir to workspace..."
-                cp -r "$COMFYUI_PATH/$dir"/* "$WORKSPACE_DIR/$dir/" 2>/dev/null || true
-            fi
+            echo "Removing default $dir directory..."
             rm -rf "$COMFYUI_PATH/$dir"
         fi
         
-        # Create symlink from ComfyUI to workspace-level directory
-        if [ ! -e "$COMFYUI_PATH/$dir" ]; then
-            ln -s "$WORKSPACE_DIR/$dir" "$COMFYUI_PATH/$dir"
+        # Create symlink if it doesn't exist
+        if [ ! -L "$COMFYUI_PATH/$dir" ]; then
+            echo "Linking $COMFYUI_PATH/$dir -> $WORKSPACE_DIR/$dir"
+            ln -sf "$WORKSPACE_DIR/$dir" "$COMFYUI_PATH/$dir"
         fi
     done
     
-    # Create temp directory symlink for faster I/O on temporary files
+    # Create temp directory symlink for faster I/O
     if [ ! -L "$COMFYUI_PATH/temp" ]; then
-        ln -s /tmp "$COMFYUI_PATH/temp" 2>/dev/null || true
+        ln -sf /tmp "$COMFYUI_PATH/temp"
     fi
+    
+    echo "Workspace setup complete. All user data will be saved to $WORKSPACE_DIR"
     
     # Download popular model if none exist (optional - comment out if not needed)
     if [ -z "$(ls -A $MODELS_DIR/checkpoints 2>/dev/null)" ]; then
@@ -133,8 +124,9 @@ export_env_vars() {
 #                               Main Program                                     #
 # ---------------------------------------------------------------------------- #
 
-echo "=== ComfyUI Optimized Startup (Minimal Writes) ==="
-echo "ComfyUI is pre-installed at: $COMFYUI_PATH"
+echo "=== ComfyUI Startup ==="
+echo "ComfyUI location: $COMFYUI_PATH"
+echo "Workspace (persistent): $WORKSPACE_DIR"
 
 # Run all setup in parallel
 setup_ssh &
@@ -164,24 +156,9 @@ if [ ! -f "$ARGS_FILE" ]; then
 EOF
 fi
 
-# Check if ComfyUI directory exists
-if [ ! -d "$COMFYUI_PATH" ]; then
-    echo "ERROR: ComfyUI directory not found at $COMFYUI_PATH"
-    echo "This should have been created by setup_workspace()"
-    exit 1
-fi
-
 # Change to ComfyUI directory
 cd "$COMFYUI_PATH"
-echo "Changed to ComfyUI directory: $(pwd)"
-
-# Check if main.py exists
-if [ ! -f "main.py" ]; then
-    echo "ERROR: main.py not found in ComfyUI directory"
-    echo "Directory contents:"
-    ls -la
-    exit 1
-fi
+echo "Working directory: $(pwd)"
 
 # Activate the venv now that we know ComfyUI exists
 if [ -f "$COMFYUI_PATH/.venv/bin/activate" ]; then
