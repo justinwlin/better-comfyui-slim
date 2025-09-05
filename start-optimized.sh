@@ -106,7 +106,7 @@ setup_workspace() {
     done
     
     # Create persistent directories for workflows and user data
-    mkdir -p "$WORKSPACE_DIR/user" "$WORKSPACE_DIR/web" "$WORKSPACE_DIR/workflows"
+    mkdir -p "$WORKSPACE_DIR/user" "$WORKSPACE_DIR/web" "$WORKSPACE_DIR/workflows" "$WORKSPACE_DIR/logs"
     
     # Symlink user directory (contains ComfyUI-Manager config, workflows, etc.)
     if [ -d "$COMFYUI_PATH/user" ] && [ ! -L "$COMFYUI_PATH/user" ]; then
@@ -128,6 +128,17 @@ setup_workspace() {
     if [ ! -L "$COMFYUI_PATH/web" ]; then
         echo "Linking $COMFYUI_PATH/web -> $WORKSPACE_DIR/web"  
         ln -sf "$WORKSPACE_DIR/web" "$COMFYUI_PATH/web"
+    fi
+    
+    # Symlink ComfyUI logs for debugging persistence
+    if [ -f "$COMFYUI_PATH/comfyui.log" ] && [ ! -L "$COMFYUI_PATH/comfyui.log" ]; then
+        echo "Backing up existing log file..."
+        cp "$COMFYUI_PATH/comfyui.log" "$WORKSPACE_DIR/logs/" 2>/dev/null || true
+        rm -f "$COMFYUI_PATH/comfyui.log"
+    fi
+    if [ ! -L "$COMFYUI_PATH/comfyui.log" ]; then
+        echo "Linking $COMFYUI_PATH/comfyui.log -> $WORKSPACE_DIR/logs/comfyui.log"
+        ln -sf "$WORKSPACE_DIR/logs/comfyui.log" "$COMFYUI_PATH/comfyui.log"
     fi
     
     # Create temp directory symlink for faster I/O
