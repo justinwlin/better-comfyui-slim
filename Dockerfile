@@ -1,12 +1,10 @@
-FROM ubuntu:22.04
+# syntax=docker/dockerfile:1.4
+# Multi-stage build for smaller final image
+FROM ubuntu:22.04 AS base-system
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV PYTHONUNBUFFERED=1
-ENV IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
-ENV FILEBROWSER_CONFIG=/workspace/madapps/.filebrowser.json
-ENV UV_LINK_MODE=copy
 
-# Layer 1: System package repositories and base tools
+# Minimal system packages only
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
@@ -15,59 +13,136 @@ RUN apt-get update && \
     && add-apt-repository ppa:deadsnakes/ppa && \
     add-apt-repository ppa:cybermax-dexter/ffmpeg-nvenc && \
     apt-get update && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Layer 2: Development tools and compilers
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    build-essential \
-    git \
-    make \
-    golang \
-    && apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Layer 3: Python 3.12
-RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3.12 \
     python3.12-venv \
     python3.12-dev \
+    git \
+    wget \
+    curl \
+    ca-certificates \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
     update-alternatives --set python3 /usr/bin/python3.12
 
-# Layer 4: System utilities
+# Install pip
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
+
+# ============================================
+# Build stage for ComfyUI
+FROM base-system AS comfyui-builder
+
+# Install build dependencies (will be discarded)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    build-essential \
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Clone and setup ComfyUI
+RUN mkdir -p /opt/comfyui-base && \
+    cd /opt && \
+    git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git comfyui-base/ComfyUI && \
+    rm -rf /opt/comfyui-base/ComfyUI/.git
+
+# Create venv and install dependencies
+RUN cd /opt/comfyui-base/ComfyUI && \
+    python3.12 -m venv .venv && \
+    . .venv/bin/activate && \
+    pip install -U pip && \
+    pip install uv && \
+    # Install PyTorch with CUDA 12.4 support first
+    uv pip install --no-cache torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124 && \
+    uv pip install --no-cache -r requirements.txt && \
+    uv pip install --no-cache GitPython numpy pillow opencv-python && \
+    # Clean up pip cache
+    pip cache purge && \
+    # Remove unnecessary files from venv
+    find .venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true && \
+    find .venv -name "*.pyc" -delete && \
+    find .venv -name "*.pyo" -delete && \
+    rm -rf .venv/share/python-wheels && \
+    rm -rf .venv/lib/python*/site-packages/*.dist-info/RECORD && \
+    rm -rf .venv/lib/python*/site-packages/*.dist-info/INSTALLER
+
+# ============================================
+# Build stage for custom nodes
+FROM comfyui-builder AS custom-nodes-builder
+
+# Clone custom nodes with --depth 1 for smaller size
+RUN cd /opt/comfyui-base/ComfyUI && \
+    mkdir -p custom_nodes && \
+    cd custom_nodes && \
+    git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Manager.git && \
+    git clone --depth 1 https://github.com/crystian/ComfyUI-Crystools.git && \
+    git clone --depth 1 https://github.com/kijai/ComfyUI-KJNodes.git && \
+    # Remove .git directories to save space
+    find . -type d -name ".git" -exec rm -rf {} + 2>/dev/null || true
+
+# Install custom node dependencies
+RUN cd /opt/comfyui-base/ComfyUI/custom_nodes && \
+    . /opt/comfyui-base/ComfyUI/.venv/bin/activate && \
+    for node_dir in */; do \
+        if [ -d "$node_dir" ] && [ -f "$node_dir/requirements.txt" ]; then \
+            uv pip install --no-cache -r "$node_dir/requirements.txt" || true; \
+        fi; \
+    done && \
+    pip cache purge
+
+# ============================================
+# Build stage for external tools
+FROM golang:1.21-alpine AS zasper-builder
+
+RUN apk add --no-cache git
+RUN wget https://github.com/zasper-io/zasper/releases/download/v0.1.0-alpha/zasper-webapp-linux-amd64.tar.gz && \
+    tar xf zasper-webapp-linux-amd64.tar.gz
+
+# ============================================
+# Final minimal image
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV IMAGEIO_FFMPEG_EXE=/usr/bin/ffmpeg
+ENV FILEBROWSER_CONFIG=/workspace/madapps/.filebrowser.json
+ENV UV_LINK_MODE=copy
+ENV PATH=/usr/local/cuda/bin:${PATH}
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}
+
+# Install only runtime dependencies (no build tools)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    software-properties-common \
+    gpg-agent \
+    && add-apt-repository ppa:deadsnakes/ppa && \
+    add-apt-repository ppa:cybermax-dexter/ffmpeg-nvenc && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+    python3.12 \
+    python3.12-venv \
+    git \
     wget \
     curl \
-    xz-utils \
     ca-certificates \
-    gnupg \
-    && apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Layer 5: Network and debugging tools
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    openssh-client \
     openssh-server \
+    ffmpeg \
+    rsync \
+    # Minimal tools only
     nano \
     htop \
-    tmux \
-    less \
-    net-tools \
-    iputils-ping \
-    procps \
-    rsync \
     && apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1 && \
+    update-alternatives --set python3 /usr/bin/python3.12
 
-# Layer 6: CUDA installation
-RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
+# Install pip and jupyter (small)
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && \
+    pip install --no-cache-dir jupyter && \
+    pip cache purge
+
+# Install CUDA (this is large but necessary)
+RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
     dpkg -i cuda-keyring_1.1-1_all.deb && \
     apt-get update && \
     apt-get install -y --no-install-recommends cuda-minimal-build-12-4 && \
@@ -75,111 +150,27 @@ RUN wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86
     rm -rf /var/lib/apt/lists/* && \
     rm cuda-keyring_1.1-1_all.deb
 
-# Layer 7: FFmpeg with NVENC
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-# Layer 8: pip and base Python packages
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && \
-    pip install --no-cache-dir jupyter
-
-# Layer 9: FileBrowser installation
+# Install FileBrowser (small binary)
 RUN curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash
 
-# Layer 10: Zasper webapp installation
-RUN wget https://github.com/zasper-io/zasper/releases/download/v0.1.0-alpha/zasper-webapp-linux-amd64.tar.gz && \
-    tar xf zasper-webapp-linux-amd64.tar.gz -C /usr/local/bin && \
-    rm zasper-webapp-linux-amd64.tar.gz
+# Copy Zasper from builder
+COPY --from=zasper-builder /go/zasper /usr/local/bin/
 
-# Layer 11: SSH configuration
+# Configure SSH
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config && \
     sed -i 's/#PasswordAuthentication yes/PasswordAuthentication yes/' /etc/ssh/sshd_config && \
     mkdir -p /run/sshd
 
-# Set CUDA environment variables
-ENV PATH=/usr/local/cuda/bin:${PATH}
-ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}
+# Copy pre-built ComfyUI from builder stage
+COPY --from=custom-nodes-builder /opt/comfyui-base /opt/comfyui-base
 
-# Layer 12: ComfyUI base installation
-RUN mkdir -p /opt/comfyui-base && \
-    cd /opt && \
-    git clone https://github.com/comfyanonymous/ComfyUI.git comfyui-base/ComfyUI
-
-# Layer 13: Python virtual environment creation
-RUN cd /opt/comfyui-base/ComfyUI && \
-    python3.12 -m venv .venv && \
-    . .venv/bin/activate && \
-    pip install -U pip && \
-    pip install uv
-
-# Layer 14: ComfyUI core dependencies
-RUN cd /opt/comfyui-base/ComfyUI && \
-    . .venv/bin/activate && \
-    uv pip install --no-cache -r requirements.txt
-
-# Layer 15: Common dependencies for custom nodes
-RUN cd /opt/comfyui-base/ComfyUI && \
-    . .venv/bin/activate && \
-    uv pip install --no-cache \
-    GitPython \
-    numpy \
-    pillow \
-    opencv-python
-
-# Layer 16: ComfyUI-Manager custom node
-RUN cd /opt/comfyui-base/ComfyUI && \
-    mkdir -p custom_nodes && \
-    cd custom_nodes && \
-    git clone https://github.com/ltdrdata/ComfyUI-Manager.git && \
-    cd ComfyUI-Manager && \
-    if [ -f "requirements.txt" ]; then \
-        . /opt/comfyui-base/ComfyUI/.venv/bin/activate && \
-        uv pip install --no-cache -r requirements.txt || true; \
-    fi
-
-# Layer 17: ComfyUI-Crystools custom node
-RUN cd /opt/comfyui-base/ComfyUI/custom_nodes && \
-    git clone https://github.com/crystian/ComfyUI-Crystools.git && \
-    cd ComfyUI-Crystools && \
-    if [ -f "requirements.txt" ]; then \
-        . /opt/comfyui-base/ComfyUI/.venv/bin/activate && \
-        uv pip install --no-cache -r requirements.txt || true; \
-    fi
-
-# Layer 18: ComfyUI-KJNodes custom node
-RUN cd /opt/comfyui-base/ComfyUI/custom_nodes && \
-    git clone https://github.com/kijai/ComfyUI-KJNodes.git && \
-    cd ComfyUI-KJNodes && \
-    if [ -f "requirements.txt" ]; then \
-        . /opt/comfyui-base/ComfyUI/.venv/bin/activate && \
-        uv pip install --no-cache -r requirements.txt || true; \
-    fi
-
-# Layer 19: Run any install.py or setup.py scripts for custom nodes
-RUN cd /opt/comfyui-base/ComfyUI/custom_nodes && \
-    . /opt/comfyui-base/ComfyUI/.venv/bin/activate && \
-    for node_dir in */; do \
-        if [ -d "$node_dir" ]; then \
-            cd "/opt/comfyui-base/ComfyUI/custom_nodes/$node_dir" && \
-            if [ -f "install.py" ]; then \
-                python install.py || true; \
-            fi && \
-            if [ -f "setup.py" ]; then \
-                uv pip install --no-cache -e . || true; \
-            fi; \
-        fi; \
-    done || true
-
-# Layer 20: Create workspace and final setup
+# Create workspace
 RUN mkdir -p /workspace/madapps
 WORKDIR /workspace/madapps
 
-# Expose ports
-EXPOSE 8188 22 8048 8080
+EXPOSE 8188 22 8048 8080 8888
 
-# Copy optimized start script
+# Copy start script
 COPY start-optimized.sh /start.sh
 RUN chmod +x /start.sh
 

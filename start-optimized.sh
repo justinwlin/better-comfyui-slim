@@ -2,7 +2,7 @@
 set -e
 
 # Configuration - everything runs from baked-in locations
-COMFYUI_PATH="/root/ComfyUI"
+COMFYUI_PATH="/opt/comfyui-base/ComfyUI"
 WORKSPACE_DIR="/workspace/madapps"
 ARGS_FILE="$WORKSPACE_DIR/comfyui_args.txt"
 MODELS_DIR="$WORKSPACE_DIR/models"
@@ -14,7 +14,8 @@ export PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
 export CUDA_MODULE_LOADING=LAZY
 export TOKENIZERS_PARALLELISM=false
 
-# No venv needed - using system Python from RunPod base image
+# Activate the venv that contains all dependencies
+source "$COMFYUI_PATH/.venv/bin/activate"
 
 # ---------------------------------------------------------------------------- #
 #                          Function Definitions                                  #
