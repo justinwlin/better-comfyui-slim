@@ -23,7 +23,7 @@ RUN python3.12 -m venv .venv && \
     pip install -U pip && \
     pip install uv && \
     # Install PyTorch with CUDA 12.4 support first
-    uv pip install --no-cache torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124 && \
+    uv pip install --no-cache torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128 && \
     uv pip install --no-cache -r requirements.txt && \
     uv pip install --no-cache GitPython numpy pillow opencv-python && \
     # Clean up pip cache
