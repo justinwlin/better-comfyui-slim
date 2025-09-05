@@ -55,7 +55,7 @@ start_services() {
     
     # Start Zasper on port 8048
     echo "Starting Zasper on port 8048..."
-    nohup zasper --port 0.0.0.0:8048 --cwd /workspace &> /zasper.log &
+    nohup zasper --port 0.0.0.0:8048 --cwd / &> /zasper.log &
     
     # Start Jupyter on port 8888
     echo "Starting Jupyter on port 8888..."
