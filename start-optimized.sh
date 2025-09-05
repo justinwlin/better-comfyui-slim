@@ -61,13 +61,18 @@ start_services() {
     echo "Starting Jupyter on port 8888..."
     nohup jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.token='' --NotebookApp.password='' &> /jupyter.log &
     
-    # Start FileBrowser (minimal config)
-    if [ ! -f "$WORKSPACE_DIR/.filebrowser.db" ]; then
-        # First run only - create minimal config
-        filebrowser config init --database "$WORKSPACE_DIR/.filebrowser.db"
-        filebrowser config set --address 0.0.0.0 --port 8080 --root /workspace --auth.method=noauth --database "$WORKSPACE_DIR/.filebrowser.db"
-    fi
-    nohup filebrowser --database "$WORKSPACE_DIR/.filebrowser.db" &> /dev/null &
+    # Start FileBrowser (simple approach without database)
+    echo "Starting FileBrowser on port 8080..."
+    # Remove any existing database that might be corrupted
+    rm -f "$WORKSPACE_DIR/.filebrowser.db" 2>/dev/null || true
+    
+    # Run FileBrowser directly without database (stateless mode)
+    nohup filebrowser \
+        --address 0.0.0.0 \
+        --port 8080 \
+        --root /workspace \
+        --noauth \
+        --log stdout &> /filebrowser.log &
     
     echo "Services started on ports: SSH(22), Zasper(8048), FileBrowser(8080), Jupyter(8888)"
 }
