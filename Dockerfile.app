@@ -3,7 +3,7 @@
 # Builds on top of base image that has CUDA, Python, and tools
 
 # When using docker-bake.hcl, this uses the base target
-# When building standalone, use: --build-context base-image=justinrunpod/ubuntu-cuda12.4-python3.12-uv:latest
+# When building standalone, use: --build-context base-image=justinrunpod/ubuntu-cuda12.8-python3.12-uv:latest
 FROM base-image AS comfyui-builder
 
 # ============================================

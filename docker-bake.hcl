@@ -11,7 +11,7 @@ variable "UBUNTU_VERSION" {
 }
 
 variable "CUDA_VERSION" {
-  default = "12.4"
+  default = "12.8"
 }
 
 variable "PYTHON_VERSION" {
@@ -23,11 +23,11 @@ variable "PYTORCH_VERSION" {
 }
 
 variable "BASE_TAG" {
-  default = "ubuntu22.04-cuda12.4-python3.12"
+  default = "ubuntu22.04-cuda12.8-python3.12"
 }
 
 variable "APP_TAG" {
-  default = "ubuntu22.04-cuda12.4-python3.12-pytorch2.5.1"
+  default = "ubuntu22.04-cuda12.8-python3.12-pytorch2.5.1"
 }
 
 group "default" {

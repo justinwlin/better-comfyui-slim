@@ -49,7 +49,7 @@ The build is split into two parts for efficiency:
 
 1. **Base Image** (`Dockerfile.base`):
    - Ubuntu 22.04
-   - CUDA 12.4
+   - CUDA 12.8
    - Python 3.12
    - UV (deterministic package manager)
    - Jupyter, FileBrowser, Zasper

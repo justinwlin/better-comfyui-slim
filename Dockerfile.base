@@ -45,7 +45,7 @@ RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 && \
     uv pip install --system --no-cache jupyter jupyterlab notebook ipywidgets && \
     pip cache purge
 
-# Install CUDA 12.4
+# Install CUDA 12.8
 RUN wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
     dpkg -i cuda-keyring_1.1-1_all.deb && \
     apt-get update && \

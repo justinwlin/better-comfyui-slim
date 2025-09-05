@@ -60,11 +60,11 @@ By default, images are pushed to Docker Hub with descriptive names:
 
 **Base Image** (General purpose Ubuntu + CUDA + Python):
 - `justinrunpod/ubuntu-cuda-python:latest`
-- `justinrunpod/ubuntu-cuda-python:ubuntu22.04-cuda12.4-python3.12`
+- `justinrunpod/ubuntu-cuda-python:ubuntu22.04-cuda12.8-python3.12`
 
 **ComfyUI Image** (Full application):
 - `justinrunpod/ubuntu-cuda-comfyui:latest`
-- `justinrunpod/ubuntu-cuda-comfyui:ubuntu22.04-cuda12.4-python3.12-pytorch2.5.1`
+- `justinrunpod/ubuntu-cuda-comfyui:ubuntu22.04-cuda12.8-python3.12-pytorch2.5.1`
 - `justinrunpod/comfyui:latest` (simple alias)
 
 To use your own registry:
@@ -93,7 +93,7 @@ The image naming convention:
 
 1. **Base Image** (`Dockerfile.base`) - ~2-3GB
    - Ubuntu 22.04
-   - CUDA 12.4
+   - CUDA 12.8
    - Python 3.12
    - UV (deterministic package manager)
    - Jupyter, FileBrowser, Zasper
@@ -191,6 +191,33 @@ Edit `/workspace/madapps/comfyui_args.txt`:
 - **Subsequent Restarts**: Instant (uses persistent storage)
 - **Model Loading**: From persistent `/workspace/models`
 - **Output Saving**: To persistent `/workspace/output`
+
+### 🔄 Startup Process
+
+When ComfyUI launches, you'll see:
+
+1. **Initial Setup** (~10-30s):
+   ```
+   🚀 ComfyUI is starting up...
+   📦 This may take 1-2 minutes on first launch while downloading registry data
+   🌐 Web interface will be available at: http://localhost:8188
+   ⏳ Please wait for 'All startup tasks have been completed' message
+   ```
+
+2. **Registry Data Download** (~1-2 minutes on first launch):
+   ```
+   FETCH ComfyRegistry Data: 5/96
+   FETCH ComfyRegistry Data: 10/96
+   ...
+   FETCH ComfyRegistry Data [DONE]
+   ```
+
+3. **Startup Complete** - Look for this message:
+   ```
+   [ComfyUI-Manager] All startup tasks have been completed.
+   ```
+
+4. **Ready to Use**: ComfyUI web interface is now fully loaded at http://localhost:8188
 
 ## 🛠️ Troubleshooting
 

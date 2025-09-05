@@ -206,6 +206,12 @@ echo "Models directory: $MODELS_DIR"
 echo "Output directory: $OUTPUT_DIR"
 echo "GPU: $GPU_NAME"
 echo "----------------------------------------"
+echo ""
+echo "🚀 ComfyUI is starting up..."
+echo "📦 This may take 1-2 minutes on first launch while downloading registry data"
+echo "🌐 Web interface will be available at: http://localhost:8188"
+echo "⏳ Please wait for 'All startup tasks have been completed' message"
+echo "----------------------------------------"
 
 # Check current directory
 echo "Current directory: $(pwd)"
